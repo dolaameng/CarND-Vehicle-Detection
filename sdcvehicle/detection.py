@@ -103,4 +103,5 @@ class VehicleDetector(object):
         patches, bboxes, scales = zip(*list(self.get_pyramid_slide_window(image, pyramid_params, window_params)))
         is_vehicle = (self.vehicle_model.predict(np.array(patches)) == "vehicle")
         vehicle_bboxes = np.array(bboxes)[is_vehicle]
+        return vehicle_bboxes
         return self.merge_boxes(image, vehicle_bboxes)

@@ -1,5 +1,6 @@
 """
 Vehicle classification models and features.
+The training dataset from udacity is not really clean.
 """
 
 from . import config
@@ -47,6 +48,8 @@ class ImageFeatExtractor(BaseEstimator):
 		hog_feats = np.vstack([self.extract_hog(im) for im in images])	
 		hog_feats = self.hog_ss.fit_transform(hog_feats)
 
+		# return np.hstack([hog_feats])
+
 		rhist_feats = np.vstack([self.extract_hist(im, 0) for im in images])
 		rhist_feats = self.rhist_ss.fit_transform(rhist_feats)
 
@@ -56,7 +59,6 @@ class ImageFeatExtractor(BaseEstimator):
 		bhist_feats = np.vstack([self.extract_hist(im, 2) for im in images])
 		bhist_feats = self.bhist_ss.fit_transform(bhist_feats)
 
-		return np.hstack([hog_feats])
 
 		return np.hstack([hog_feats, rhist_feats, ghist_feats, bhist_feats])
 
@@ -67,6 +69,8 @@ class ImageFeatExtractor(BaseEstimator):
 		hog_feats = np.vstack([self.extract_hog(im) for im in images])
 		hog_feats = self.hog_ss.transform(hog_feats)
 
+		# return np.hstack([hog_feats])
+
 		rhist_feats = np.vstack([self.extract_hist(im, 0) for im in images])
 		rhist_feats = self.rhist_ss.transform(rhist_feats)
 
@@ -76,7 +80,6 @@ class ImageFeatExtractor(BaseEstimator):
 		bhist_feats = np.vstack([self.extract_hist(im, 2) for im in images])
 		bhist_feats = self.bhist_ss.transform(bhist_feats)
 
-		return np.hstack([hog_feats])
 
 		return np.hstack([hog_feats, rhist_feats, ghist_feats, bhist_feats])
 
@@ -144,7 +147,7 @@ def fit_best_model():
 
 def build_model():
 	images, labels = load_data()
-	train_images, test_images, train_labels, test_labels = train_test_split(images, labels, test_size=0.2)
+	train_images, test_images, train_labels, test_labels = train_test_split(images, labels, test_size=0.1)
 	classifier = VehicleClassifier(
 			pixels_per_cell=(8,8),
 			cells_per_block=(2,2),
@@ -152,4 +155,5 @@ def build_model():
 			C=5e-3)
 	classifier.fit(train_images, train_labels)
 	print("built model performance on test:", classifier.score(test_images, test_labels))
+	# classifier.fit(images, labels)
 	return classifier
