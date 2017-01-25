@@ -10,6 +10,7 @@ np.random.seed(1337)
 from skimage import io, feature, color
 from glob import glob
 from sklearn.svm import LinearSVC
+from sklearn.svm import SVC
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import RandomizedSearchCV
@@ -55,6 +56,8 @@ class ImageFeatExtractor(BaseEstimator):
 		bhist_feats = np.vstack([self.extract_hist(im, 2) for im in images])
 		bhist_feats = self.bhist_ss.fit_transform(bhist_feats)
 
+		return np.hstack([hog_feats])
+
 		return np.hstack([hog_feats, rhist_feats, ghist_feats, bhist_feats])
 
 	def fit(self, images, labels=None):
@@ -73,6 +76,8 @@ class ImageFeatExtractor(BaseEstimator):
 		bhist_feats = np.vstack([self.extract_hist(im, 2) for im in images])
 		bhist_feats = self.bhist_ss.transform(bhist_feats)
 
+		return np.hstack([hog_feats])
+
 		return np.hstack([hog_feats, rhist_feats, ghist_feats, bhist_feats])
 
 class VehicleClassifier(BaseEstimator, ClassifierMixin):
@@ -85,6 +90,7 @@ class VehicleClassifier(BaseEstimator, ClassifierMixin):
 		self.model = Pipeline([
 			("feature_extractor", ImageFeatExtractor(**kwargs)),
 			("svc", LinearSVC(C=self.C))
+			# ("svc", SVC(C=self.C, kernel="linear", probability=True))
 		])
 	def fit(self, images, labels):
 		"""`images`: list of images of fixed shape
