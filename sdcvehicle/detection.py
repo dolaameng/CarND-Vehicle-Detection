@@ -4,6 +4,10 @@ from . import classification
 from scipy.misc import imresize
 import numpy as np
 
+from skimage.measure import label, regionprops
+from skimage.morphology import closing, square, opening
+import cv2
+
 class VehicleDetector(object):
     def __init__(self):
         """Main control parameters for balance between recall vs precision:
@@ -16,10 +20,14 @@ class VehicleDetector(object):
         # parameters for sliding window
         self.window_size = (64, 64)
         self.rows = (0.5, 1)
-        self.cols = (0.15, 1)
+        self.cols = (0.35, 1)
         self.stride = (32, 32)
         # parameters for layer pyramid
-        self.scale = 1.1
+        self.scale = 1.2
+        # heatmap threshold
+        self.heatmap_thr = 2.5
+        # for video detection
+        self.last_heatmap = None
 
     def slide_window(self, image, 
         rows=(0, 1), cols=(0, 1), 
@@ -84,24 +92,83 @@ class VehicleDetector(object):
         """Preprocess Image, e.g., resizing
         """
         return image
-    def merge_boxes(self, image, bboxes):
+    def get_heatmap(self, image):
         """Merge boxes by creating a heatmap.
-        """
-        heatmap = np.zeros(image.shape[:2])
-        for bbox in bboxes:
-            (c1, r1), (c2, r2) = bbox
-            heatmap[r1:r2,c1:c2] += 1
-        return heatmap
-
-    def detect_in_image(self, image):
-        """Detect vehicles in an image.
-        It returns a list of bboxes for each vehicle in the original image.
         """
         image = self.preprocess(image)
         pyramid_params = {"scale": self.scale}
         window_params = {"rows": self.rows, "cols": self.cols, "window_size": self.window_size, "stride": self.stride}
         patches, bboxes, scales = zip(*list(self.get_pyramid_slide_window(image, pyramid_params, window_params)))
+        # patches, bboxes = self.get_random_patches(image)
         is_vehicle = (self.vehicle_model.predict(np.array(patches)) == "vehicle")
         vehicle_bboxes = np.array(bboxes)[is_vehicle]
-        return vehicle_bboxes
-        return self.merge_boxes(image, vehicle_bboxes)
+        heatmap = np.zeros(image.shape[:2])
+        for bbox in vehicle_bboxes:
+            (c1, r1), (c2, r2) = bbox
+            heatmap[r1:r2,c1:c2] += 1
+        
+        return heatmap
+
+    def draw_merged_boxes(self, image, heatmap, return_bboxes=False):
+        heatmap = heatmap >= self.heatmap_thr#2.5#4#
+        # zeros = np.zeros_like(heatmap)
+        # return (image*0.1 + 0.9*image*np.dstack([zeros, heatmap, zeros])).astype(np.uint8)
+
+        # heatmap = closing(heatmap, square(3))
+        heatmap = opening(heatmap, square(11))
+        label_img = label(heatmap)
+        bboxes = []
+        plot_img = image.copy()
+        regions = regionprops(label_img)
+        avg_area = 1500#4500#np.median([r.area for r in regions])
+        for region in regionprops(label_img):
+            if region.area < avg_area: continue
+            r1,c1,r2,c2 = region.bbox
+            bboxes.append([(c1, r1), (c2, r2)])
+            cv2.rectangle(plot_img, (c1, r1), (c2, r2), (255, 0, 0), 3)
+        if return_bboxes:
+            return plot_img, bboxes
+        else:
+            return plot_img
+
+    def get_random_patches(self, image, n=2000):
+        """Cheaper way of sampling patches, compared to sliding windown and image pyramid
+        """
+        R, C = image.shape[:2]
+        minsize, maxsize = 64, 96
+        r1s = np.random.randint(R//2, R-minsize, n)
+        c1s = np.random.randint(int(C*0.45), C-maxsize, n)
+        szs = np.random.randint(minsize, maxsize, n)
+        r2s = np.minimum(r1s + szs, R)
+        c2s = np.minimum(c1s + szs, C)
+        bboxes = [ [(c1, r1), (c2, r2)] for r1, r2, c1, c2 in zip(r1s, r2s, c1s, c2s)]
+        patches = [imresize(image[r1:r2, c1:c2, :], (64,64)) for r1, r2, c1, c2 in zip(r1s, r2s, c1s, c2s)]
+        return patches, bboxes
+
+    def detect_in_image(self, image):
+        """Detect vehicles in an image.
+        It returns a list of bboxes for each vehicle in the original image.
+        """
+        
+        # return vehicle_bboxes
+        heatmap = self.get_heatmap(image)
+        detection_img = self.draw_merged_boxes(image, heatmap)
+        return detection_img
+
+    def detect_in_video(self, video):
+        """Detect vehicles in `moviepy.editor.VideoFileClip`
+        """
+        self.last_heatmap = None
+        def process_frame(frame):
+            if self.last_heatmap is None:
+                self.last_heatmap = self.get_heatmap(frame)
+                detection_img = self.draw_merged_boxes(frame, self.last_heatmap)
+            else:
+                heatmap = self.get_heatmap(frame)
+                combined_heatmap = heatmap * 0.8 + self.last_heatmap * 0.2
+                detection_img = self.draw_merged_boxes(frame, combined_heatmap)
+                self.last_heatmap = combined_heatmap
+            return detection_img
+        processed_video = video.fl_image(process_frame)
+        return processed_video
+        
